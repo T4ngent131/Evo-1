@@ -73,17 +73,19 @@ def check_clean(allow_dirty):
 
 
 def run_tests():
-    result = subprocess.run([sys.executable, "tests/run_all.py"], cwd=ROOT, capture_output=True,
+    result = subprocess.run([sys.executable, "tests/run_all.py", "--strict"], cwd=ROOT, capture_output=True,
                             text=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"})
     output = result.stdout + result.stderr
     if result.returncode != 0:
         print(output)
         raise Stop("测试没有全部通过")
-    print(output[output.find("===== 结果"):].rstrip())
+    marker = output.rfind("===== results")
+    print((output[marker:] if marker >= 0 else output).rstrip())
 
 
 def self_check():
     """用打包好的 Evo.exe 识别一张总结页截图。数据和日志写到临时文件夹，不碰任何真实数据。"""
+    check_self_check_image()
     if not CHECK_IMAGE.is_file():
         print(f"    ⏭ 跳过：找不到截图 {CHECK_IMAGE}")
         return
@@ -95,6 +97,12 @@ def self_check():
         print(log)
         raise Stop("打包好的 Evo.exe 自检结果不对")
     print(f"    ✅ {CHECK_EXPECT}")
+
+
+def check_self_check_image():
+    """Release evidence is mandatory even when ``--allow-dirty`` is used."""
+    if not CHECK_IMAGE.is_file():
+        raise Stop(f"release self-check screenshot is missing: {CHECK_IMAGE}")
 
 
 def make_zip(target, readme_text):
@@ -143,9 +151,13 @@ def main():
         commit = git("rev-parse", "--short", "HEAD") + ("+改动" if dirty else "")
 
         step(2, "跑全部测试")
+        # A missing self-check image must be reported before tests or PyInstaller.
+        check_self_check_image()
         run_tests()
 
         step(3, "打包（build.py）")
+        # Stop before PyInstaller when real-image release evidence is absent.
+        check_self_check_image()
         subprocess.run([sys.executable, "tools/build.py"], cwd=ROOT, check=True)
         if (APP / "data_location.txt").exists():
             raise Stop("dist/Evo 里有 data_location.txt，别人的数据会被指到你电脑上的文件夹，不能发布")

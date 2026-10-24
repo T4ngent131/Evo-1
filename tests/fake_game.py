@@ -51,6 +51,9 @@ _runs = itertools.count(1)
 last_db = None  # 最近一次 run_collect 用的临时数据库
 
 
+MISSING_SHOTS = []  # runner reads this so a partially skipped test cannot look green
+
+
 class MissingShots(Exception):
     """找不到测试要用的截图（截图不在仓库里，只在开发者电脑上）。"""
 
@@ -59,8 +62,21 @@ def shot(relative):
     """captures/ 里的一张截图的完整路径。找不到就抛出 MissingShots，让测试跳过。"""
     path = SHOTS / relative
     if not path.is_file():
+        MISSING_SHOTS.append(path)
         raise MissingShots(path)
     return path
+
+
+def take_missing_shots():
+    """Return and clear unavailable private captures observed by one test."""
+    missing = tuple(MISSING_SHOTS)
+    MISSING_SHOTS.clear()
+    return missing
+
+
+def record_missing(path):
+    """Record a private fixture absence when a test discovers it without shot()."""
+    MISSING_SHOTS.append(Path(path))
 
 
 def load(path):

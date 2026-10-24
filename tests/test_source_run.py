@@ -30,11 +30,12 @@ def redirect_checks(folder):
     """use_installed_data()：什么时候改、改成什么。"""
     installed = folder / "Evo Tracker Data"
     pointer, empty, missing = folder / "pointer.txt", folder / "empty.txt", folder / "missing.txt"
+    local_pointer = folder / "missing-local-pointer.txt"
     pointer.write_text(f"{installed}\n", encoding="utf-8")
     empty.write_text("\n", encoding="utf-8")
 
     def run(environ, path, frozen=False):
-        result = source_run.use_installed_data(environ, path, frozen)
+        result = source_run.use_installed_data(environ, path, frozen, local_pointer)
         return result, environ
 
     changed, env = run({}, pointer)
@@ -55,6 +56,7 @@ def imported_evo_app():
     code = ("import json, os, evo_app, paths; "
             "print(json.dumps([evo_app.INSTALLED_DATA, str(paths.DATA_DIR), os.environ.get('EVO_DATA_DIR')], default=str))")
     env = {k: v for k, v in os.environ.items() if k not in ("EVO_DATA_DIR", "EVO_CAPTURES_DIR")}
+    env["LOCALAPPDATA"] = str(Path(tempfile.mkdtemp(prefix="evo-local-")))
     out = subprocess.run([sys.executable, "-c", code], cwd=PROJECT / "code", env={**env, "PYTHONIOENCODING": "utf-8"},
                          capture_output=True, text=True, encoding="utf-8", check=True)
     return json.loads(out.stdout)
@@ -71,6 +73,7 @@ print(json.dumps({"data": str(paths.DATA_DIR), "db": str(paths.DB_PATH), "captur
 def probe(environ):
     """在另一个 Python 进程里看路径（paths.py 一导入就决定，同一个进程里改不了）。只读，不写文件。"""
     env = {k: v for k, v in os.environ.items() if k not in ("EVO_DATA_DIR", "EVO_CAPTURES_DIR")}
+    env["LOCALAPPDATA"] = str(Path(tempfile.mkdtemp(prefix="evo-local-")))
     env.update(environ, PYTHONIOENCODING="utf-8")
     out = subprocess.run([sys.executable, "-c", PROBE], cwd=PROJECT / "code", env=env, capture_output=True, text=True,
                          encoding="utf-8", check=True)
@@ -80,8 +83,9 @@ def probe(environ):
 def paths_checks(folder):
     """改了以后各个路径在哪里。"""
     installed = folder / "Evo Tracker Data"
+    local_pointer = folder / "missing-local-pointer.txt"
     env = {}
-    source_run.use_installed_data(env, _pointer(folder, installed))
+    source_run.use_installed_data(env, _pointer(folder, installed), local_pointer=local_pointer)
     on = probe(env)
     off = probe({"EVO_DATA_DIR": str(installed)})  # 只设数据文件夹（测试的做法）：截图跟着数据文件夹
     return {

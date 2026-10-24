@@ -16,6 +16,8 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
+from fake_game import record_missing
+
 from fake_game import SHOTS, report  # 要在项目代码之前导入（设置临时数据文件夹）
 
 import panel_app
@@ -29,6 +31,7 @@ def screenshot_checks():
     """返回检查结果；没有截图返回 None。"""
     files = sorted(SHOTS.glob("live/*/[0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9].png"))
     if not files:
+        record_missing(SHOTS / "live" / "<summary screenshots>")
         return None
     from ocr import SMALL_CROP_PARAMS, create_engine, load_config, load_image  # 用到截图才加载识别引擎
     from summary_page import CONFIG_NAME, read_summary
@@ -162,8 +165,8 @@ def main():
         print("  ⏭ 截图那几项跳过：找不到总结页截图（截图只在开发者电脑上，不在仓库里）")
     else:
         ok &= report(shots)
-    return ok
+    return None if shots is None else ok
 
 
 if __name__ == "__main__":
-    raise SystemExit(0 if main() else 1)
+    raise SystemExit(0 if main() is not False else 1)
