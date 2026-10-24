@@ -119,12 +119,18 @@ def _first(got, order):
 def settle(conn, match_id, log=print):
     """按这一局各来源的读数（readings 表）定下名次、击杀、助攻、伤害、老板分、RP，并重写备注、待确认。
     备注里其他来源写的问题（经验值页明细对不上、大厅校准对不上……）保留。"""
+    row = storage.get_match(conn, match_id)
+    edited = {name.strip() for name in (row["edited"] or "").split(",") if name.strip()}
     got, sources = {}, set()  # 项 → {来源: 值}；这一局有哪些来源（没读到的也算，比如总结页上名次没读到）
+    rejected = []
     for r in storage.readings_of(conn, match_id):
         sources.add(r["source"])
+        if r["status"] not in (None, "ok"):
+            if r["field"] not in edited:
+                rejected.append(r)
+            continue
         if r["value"] is not None:
             got.setdefault(r["field"], {})[r["source"]] = r["value"]
-    row = storage.get_match(conn, match_id)
     problems, old_info = _split_notes(row["review_note"])
     fields, notes, filled = {}, [], []
 
@@ -213,6 +219,31 @@ def settle(conn, match_id, log=print):
     elif end in ("stop", "next"):  # 还活着就没了下文：掉线、崩溃、停止记录
         notes.append(NO_END_NOTE)
 
+    note_labels = {"placement": "名次", "kills": "击杀/助攻/击倒", "assists": "击杀/助攻/击倒",
+                   "knockdowns": "击杀/助攻/击倒", "damage": "伤害", "squad_kills": "小队总击杀",
+                   "survival_time": "生存时间", "revives": "急救", "respawns": "重生"}
+    unresolved = []
+    for reading in rejected:
+        value = fields.get(reading["field"], row[reading["field"]])
+        if reading["status"] == "not_found" and value is not None:
+            label = note_labels.get(reading["field"])
+            if label:
+                problems = [p for p in problems if not p.startswith(label)]
+        else:
+            unresolved.append(reading)
+    problems = [p for p in problems if not p.startswith("读数未通过校验：")]
+    if unresolved:
+        notes.append("读数未通过校验：" + "、".join(sorted({r["field"] for r in unresolved})) + "，请核对")
+    edited_prefixes = {
+        "placement": ("名次",), "kills": ("击杀/", "对局中读到的击杀"),
+        "assists": ("击杀/", "对局中读到的助攻"),
+        "damage": ("伤害", "对局中读到的伤害"), "rp_delta": ("RP",),
+    }
+    ignored = tuple(prefix for field in edited for prefix in edited_prefixes.get(field, ()))
+    if ignored:
+        notes = [note for note in notes if not note.startswith(ignored)]
+        problems = [problem for problem in problems if not problem.startswith(ignored)]
+    fields = {field: value for field, value in fields.items() if field not in edited}
     all_notes = notes + problems
     fields["review_note"] = "；".join(all_notes + info) or None
     fields["needs_review"] = int(bool(all_notes))
@@ -236,6 +267,7 @@ class PostMatch:
         self.reset()
 
     def reset(self):
+        self.round_token = getattr(self, "round_token", 0) + 1
         self.match_id = None  # 这一局总结页存进数据库后的编号
         self.summary = None  # 这一局总结页的读数和时间
         self.xp = None  # 这一局读得最好的一次经验值页：(读数, 问题, 截图路径, 时间)

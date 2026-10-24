@@ -106,8 +106,7 @@ def read_summary(engine, img, cfg, save_crops=False):
     if kda["status"] == "ok" and squad["status"] == "ok" and kda["value"][0] > squad["value"]:
         problems.append(f"击杀数 {kda['value'][0]} 大于小队总击杀 {squad['value']}")
 
-    for name in KEY_FIELDS:
-        r = results[name]
+    for name, r in results.items():
         if r["status"] != "ok":
             problems.append(f"{r['label']}：{STATUS_TEXT[r['status']]}（OCR 原文：{r['raw'] or '无'}）")
     return results, problems
@@ -130,7 +129,7 @@ def to_seconds(duration):
 
 def summary_to_match(results, problems, ended_at, evidence_path=None):
     """把总结页的识别结果整理成数据库里"一局"的格式（键和 storage.COLUMNS 的列名一致）。"""
-    v = {name: r["value"] for name, r in results.items()}
+    v = {name: r["value"] if r["status"] == "ok" else None for name, r in results.items()}
     kills, assists, knockdowns = v["kda"] if v["kda"] else (None, None, None)
     return {
         "ended_at": ended_at,
@@ -153,15 +152,27 @@ READING_FIELDS = ("placement", "squad_kills", "kills", "assists", "knockdowns", 
 
 
 def summary_readings(results):
-    """总结页读到的各项，整理成 (值, 置信度) 两个字典，键是 storage.COLUMNS 的列名（存进各来源读数表 readings 用）。
+    """总结页读到的各项，返回 (原始候选值, 置信度, 状态, OCR 原文) 四个字典。
     击杀/助攻/击倒是一个小块里读出来的，三项用同一个置信度。"""
-    match = summary_to_match(results, [], None)
-    values = {k: match[k] for k in READING_FIELDS}
+    values = {}
+    for name, r in results.items():
+        if name == "kda":
+            kda = r["value"] or (None, None, None)
+            values.update(zip(("kills", "assists", "knockdowns"), kda))
+        elif name == "survival_time":
+            values[name] = to_seconds(r["value"])
+        else:
+            values[name] = r["value"]
     scores = {}
     for name, r in results.items():
         for key in (("kills", "assists", "knockdowns") if name == "kda" else (name,)):
             scores[key] = r["score"]
-    return values, scores
+    statuses, raw_texts = {}, {}
+    for name, r in results.items():
+        for key in (("kills", "assists", "knockdowns") if name == "kda" else (name,)):
+            statuses[key] = r["status"]
+            raw_texts[key] = r["raw"]
+    return values, scores, statuses, raw_texts
 
 
 def show(value):

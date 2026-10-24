@@ -18,7 +18,7 @@ from pathlib import Path
 from paths import DB_PATH
 
 APP_VERSION = "0.3.8"
-SCHEMA_VERSION = 7  # 表结构变了就加 1，并在 MIGRATIONS 里写上怎么从旧版本升级
+SCHEMA_VERSION = 8  # 表结构变了就加 1，并在 MIGRATIONS 里写上怎么从旧版本升级
 
 # 列名和类型，顺序也是导出 CSV 时的列顺序
 COLUMNS = {
@@ -89,6 +89,8 @@ READING_TABLE = """CREATE TABLE IF NOT EXISTS readings (
   source TEXT NOT NULL,  -- 从哪个画面读的：总结页、经验值页、淘汰画面
   value,  -- 读到的值（数字或文字，所以不写类型）；没读到为空
   score REAL,  -- 识别的置信度（0–1）；没有为空
+  status TEXT,  -- ok / low_score / not_found / parse_fail / out_of_range；旧数据为 NULL
+  raw_text TEXT,  -- OCR 原文；旧数据为 NULL
   read_at TEXT,  -- 读的时间
   PRIMARY KEY (match_id, field, source)
 )"""
@@ -116,6 +118,7 @@ MIGRATIONS = {
         ("加列", "teammates", "legend", "TEXT"),  # 队友的传奇
         LOBBY_TABLE],  # 大厅读数
     7: [("加列", "matches", "edited", "TEXT")],  # 2026-10-22 0.3.7：用户改过哪几项（匿名统计里的"识别情况"用）
+    8: [("add column", "readings", "status", "TEXT"), ("add column", "readings", "raw_text", "TEXT")],
 }
 
 
@@ -308,13 +311,14 @@ def lobby_readings(conn, names=None):
     return [r for r in rows if r["player_name"] and name_key(r["player_name"]) in keys]
 
 
-def save_readings(conn, match_id, source, values, read_at, scores=None):
+def save_readings(conn, match_id, source, values, read_at, scores=None, statuses=None, raw_texts=None):
     """记下一个来源（如"淘汰画面"）对这一局读到的各项，同一来源同一项原来有的就覆盖。
     values：{项: 读到的值}，没读到的值为 None（"没读到"本身也记下）；scores：{项: 置信度}，没有的项不写。"""
-    scores = scores or {}
-    conn.executemany("INSERT OR REPLACE INTO readings (match_id, field, source, value, score, read_at) "
-                     "VALUES (?, ?, ?, ?, ?, ?)",
-                     [(match_id, field, source, value, scores.get(field), read_at) for field, value in values.items()])
+    scores, statuses, raw_texts = scores or {}, statuses or {}, raw_texts or {}
+    conn.executemany("INSERT OR REPLACE INTO readings (match_id, field, source, value, score, status, raw_text, read_at) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                     [(match_id, field, source, value, scores.get(field), statuses.get(field), raw_texts.get(field), read_at)
+                      for field, value in values.items()])
     conn.commit()
 
 

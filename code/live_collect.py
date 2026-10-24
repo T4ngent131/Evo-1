@@ -54,7 +54,7 @@ from match_start import read_match_start
 from ocr import SMALL_CROP_PARAMS, LazyEngine, load_config
 from paths import CAPTURES_DIR
 from player_name import PlayerNameReader
-from post_match import SOURCE_CHAMPION, SOURCE_SUMMARY, PostMatch
+from post_match import SAME_MATCH_SECONDS, SOURCE_CHAMPION, SOURCE_SUMMARY, PostMatch
 from process_info import memory_mb, set_low_priority
 from screens import ScreenDetector
 from summary_page import KEY_FIELDS, is_champion, read_summary, show, summary_readings, summary_to_match
@@ -95,6 +95,8 @@ class SummaryWatcher:
         self.visit = None  # 这一次停在总结页的情况：开始时间、上一次的读数、读得最全的一次
         self.done = False  # 这一次总结页已经存过了
         self.last_saved = None  # 最近存进数据库的那一局的读数（切到别的页再切回来时，用来认出是同一局）
+        self.last_saved_token = None
+        self.last_saved_time = None
 
     @property
     def waiting(self):
@@ -114,15 +116,15 @@ class SummaryWatcher:
             self.visit = {"start": time.monotonic(), "last": None, "best": None, "core_stable": False}
         visit = self.visit
         results, problems = read_summary(self.engine, frame, self.cfg)
-        values = {name: r["value"] for name, r in results.items()}
+        values = {name: r["value"] if r["status"] == "ok" else None for name, r in results.items()}
         filled = sum(v is not None for v in values.values())
         if visit["best"] is None or filled >= visit["best"][0]:
             visit["best"] = (filled, results, problems, frame.copy(), now)
         complete = all(values[k] is not None for k in KEY_FIELDS)
         # 除名次、小队总击杀以外的数字都读到了，且和上一次相同
-        core = {k: v for k, v in values.items() if k not in LATE_FIELDS}
+        core = {k: values[k] for k in KEY_FIELDS if k not in LATE_FIELDS}
         if visit["last"] is not None and all(v is not None for v in core.values()) \
-                and core == {k: v for k, v in visit["last"].items() if k not in LATE_FIELDS}:
+                and core == {k: visit["last"][k] for k in core}:
             visit["core_stable"] = True
 
         # 冠军的总结页顶部是"捍卫者"、没有"第 X 名"，名次永远读不到：其他数字稳定了就算读完（第 1 名由冠军横幅补上，
@@ -146,8 +148,9 @@ class SummaryWatcher:
 
     def _record(self, results, problems, frame, when, note=None):
         """把一次总结页的读数存进数据库。如果和上一局是同一局（来回切页），就不重复存。"""
-        values = {name: r["value"] for name, r in results.items()}
-        if same_match(values, self.last_saved):
+        values = {name: r["value"] if r["status"] == "ok" else None for name, r in results.items()}
+        within_same_match = self.last_saved_time is not None and (when - self.last_saved_time).total_seconds() <= SAME_MATCH_SECONDS
+        if same_match(values, self.last_saved) and self.last_saved_token == self.post.round_token and within_same_match:
             self.log(f"[{when:%H:%M:%S}] 回到了同一局的总结页，不重复保存")
             return
         if note:
@@ -156,10 +159,12 @@ class SummaryWatcher:
         save_png(image_path, frame)
         match = summary_to_match(results, problems, f"{when:%Y-%m-%d %H:%M:%S}", image_path)
         match_id = storage.insert_match(self.conn, match)
-        readings, scores = summary_readings(results)
-        storage.save_readings(self.conn, match_id, SOURCE_SUMMARY, readings, f"{when:%Y-%m-%d %H:%M:%S}", scores)
+        readings, scores, statuses, raw_texts = summary_readings(results)
+        storage.save_readings(self.conn, match_id, SOURCE_SUMMARY, readings, f"{when:%Y-%m-%d %H:%M:%S}", scores,
+                              statuses=statuses, raw_texts=raw_texts)
         self.saved += 1
         self.last_saved = values
+        self.last_saved_time = when
         self.log(f"[{when:%H:%M:%S}] 第 {self.saved} 局（编号 {match_id}）：第 {show(values['placement'])} 名，"
                  f"击杀/助攻/击倒 {show(values['kda'])}，伤害 {show(values['damage'])}")
         for p in problems:
@@ -174,6 +179,8 @@ class SummaryWatcher:
             found = self.names.read(frame, "summary")
             name = found[0] if found else None
         self.post.on_summary_saved(match_id, values, when, name)
+        # on_summary_saved 可能先 finish 上一局而调用 reset；因此在调用后记住当前局次。
+        self.last_saved_token = self.post.round_token
         if "banner" in self.cfg and is_champion(self.engine, frame, self.cfg):
             self.post.on_champion(when, SOURCE_SUMMARY)
 

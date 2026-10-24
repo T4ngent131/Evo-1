@@ -7,7 +7,7 @@
 - 跨了大段（如钻石 → 大师、钻石 → 白金）：升大段可能有奖励分、降大段有保护，前后之差 ≠ 各局 RP 之和，只写日志不标
 - 两次之间没有记下任何排位局但总分变了（Evo 没开的时候打过）：只写日志
 - 大厅之前最近的那一局没有段位（没进经验值页）：它结束后的段位就是这次大厅读到的，顺便补上
-只看同一个玩家名的局（多账号），还不知道玩家名的局也算进去。
+只看同一个已知玩家名的局（多账号）；未知或空名字不参与自动校准。
 """
 
 import ranks
@@ -18,12 +18,15 @@ RP_RANGE = (-200, 600)  # 补出来的 RP 不在这个范围里，说明中间�
 
 
 def _same_player(row_name, name):
-    return name is None or row_name is None or storage.name_key(row_name) == storage.name_key(name)
+    return bool(row_name and name and storage.name_key(row_name) == storage.name_key(name))
 
 
 def calibrate(conn, reading, log=print):
     """reading：刚记下的大厅读数（read_at、player_name、rank_tier、rank_division、rank_progress、score）。"""
-    name = reading["player_name"]
+    name = (reading["player_name"] or "").strip()
+    if not name:
+        log("大厅校准：玩家名未知，不自动补 RP 或段位")
+        return
     previous = [r for r in storage.lobby_readings(conn) if r["read_at"] < reading["read_at"]
                 and _same_player(r["player_name"], name)]
     games = [m for m in conn.execute("SELECT * FROM matches WHERE ended_at <= ? ORDER BY ended_at, match_id",
