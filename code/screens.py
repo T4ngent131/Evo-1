@@ -23,6 +23,7 @@ import numpy as np
 
 from ocr import SMALL_CROP_PARAMS, create_engine, crop, load_config, load_image, read_lines
 from paths import CONFIG_DIR
+import ui_terms
 
 TEMPLATE_DIR = CONFIG_DIR / "templates"
 
@@ -93,7 +94,8 @@ class ScreenDetector:
         """第 2 步：用识别引擎读检查区域，关键字是不是全都在。"""
         spec = self.cfg["screens"][name]
         text = "".join(t for t, _ in read_lines(self.engine, frame, spec["roi"], {**self.cfg, **spec}))
-        return all(k in text for k in spec["keywords"])
+        groups = [spec["keywords"], *spec.get("keyword_sets", [])]
+        return ui_terms.has_keywords(text, groups)
 
     def detect(self, frame):
         for name in self.cfg["screens"]:

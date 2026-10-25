@@ -19,29 +19,26 @@ from pathlib import Path
 import calibration
 import ranks
 import storage
+import ui_terms
 from hud import Snip, read_name
 from ocr import crop, load_config, load_image
 
 CONFIG_NAME = "lobby.json"
 ROMAN = {"Ⅰ": "I", "Ⅱ": "II", "Ⅲ": "III", "Ⅳ": "IV", "1": "I", "l": "I", "|": "I", "Ⅴ": "V"}
-PROGRESS = re.compile(r"(\d{1,5})\s*/\s*\d{2,5}\s*排位点数")  # "868/1000 排位点数"（"前5名排位点数：1571"没有斜杠，不算）
-WHOLE_PROGRESS = re.compile(r"^(\d{1,6})\s*排位点数$")  # 大师、猎杀者不分段，可能只写"16523 排位点数"（还没见过样本）
+PROGRESS = re.compile(r"(\d{1,5})/\d{2,5}" + ui_terms.POINT_SUFFIX_COMPACT, re.I)
+WHOLE_PROGRESS = re.compile(r"^(\d{1,6})" + ui_terms.POINT_SUFFIX_COMPACT + r"$", re.I)
 
 
 def roman(text):
     """"ⅡI"、"II"、"Ⅱ" → 罗马数字；不是 I–IV 返回 None。"""
-    text = "".join(ROMAN.get(c, c) for c in text.replace(" ", ""))
+    text = "".join(ROMAN.get(c, c) for c in text.replace(" ", "")).upper()
     return text if text in ranks.DIVISIONS else None
 
 
 def parse_tier(text):
     """以段位名开头的一行（"钻石II"、"大师"）→ (段位, 文字里的段)；不是这样的一行返回 None。"""
-    text = text.replace(" ", "")
-    for tier in sorted(ranks.TIERS, key=len, reverse=True):
-        key = tier.replace(" ", "")
-        if text.lower().startswith(key.lower()):
-            return tier, roman(text[len(key):])
-    return None
+    found = ui_terms.tier_prefix(text)
+    return (found[0], roman(found[1])) if found else None
 
 
 class LobbyReader:
@@ -67,7 +64,8 @@ class LobbyReader:
             if tier and out["tier"] is None:
                 out["tier"] = tier[0]
                 out["text_division"] = tier[1] if score >= c["text_division_score"] else None
-            m = PROGRESS.search(text.replace(" ", "")) or WHOLE_PROGRESS.match(text.replace(" ", ""))
+            compact = ui_terms.key(text)
+            m = PROGRESS.search(compact) or WHOLE_PROGRESS.match(compact)
             if m and out["progress"] is None:
                 out["progress"] = int(m[1])
         emblem = c["emblem"]

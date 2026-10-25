@@ -17,6 +17,7 @@ import cv2
 from ocr import SMALL_CROP_PARAMS, create_engine, crop, load_config, load_image
 from paths import CAPTURES_DIR, data_relative
 from process_info import memory_mb
+import ui_terms
 
 CONFIG_NAME = "summary.json"
 CROPS_DIR = CAPTURES_DIR / "debug_crops"
@@ -117,7 +118,8 @@ def is_champion(engine, img, cfg):
     """总结页顶部的大字是不是"捍卫者"（拿冠军；被淘汰时是"全军覆没"）。"""
     banner = cfg["banner"]
     result = engine(crop(img, banner["roi"], cfg, banner.get("anchor")))
-    return any(banner["champion"] in text for text in result.txts or ())
+    words = [banner["champion"], *banner.get("champion_aliases", [])]
+    return any(ui_terms.key(word) in ui_terms.key(text) for text in result.txts or () for word in words)
 
 
 def to_seconds(duration):

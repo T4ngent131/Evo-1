@@ -26,7 +26,7 @@ def read_eliminated(engine, img, cfg):
     for text, score in lines:
         for wrong, right in cfg["replace"].items():
             text = text.replace(wrong, right)
-        m = re.search(spec["pattern"], text.replace(" ", ""))
+        m = re.search(spec["pattern"], text.replace(" ", ""), re.I)
         if m and score >= cfg["min_score"] and low <= int(m[1]) <= high:
             return {"placement": int(m[1]), "raw": text, "score": score}
     return {"placement": None, "raw": " ".join(t for t, _ in lines), "score": max((s for _, s in lines), default=None)}

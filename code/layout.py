@@ -4,7 +4,8 @@
 - 比 16:9 窄的画面（16:10、4:3），游戏按宽度缩放界面：界面和 16:9 时一样宽，上下多出一截
 - 多出来的高度怎么分，每块界面不一样，写在 config 里每个区域旁边的 "anchor"（不写就用整个文件的 "anchor"）：
   "top" 贴上边、"center" 居中、"bottom" 贴下边，或者 0–1 之间的数（多出来的高度里，这块界面上面空出几成）
-- 16:9 时没有多出来的高度，anchor 不起作用，结果和以前完全一样。比 16:9 更宽的（如 21:9）还没校准过，照旧横竖各自拉伸
+- 16:9 时没有多出来的高度，anchor 不起作用，结果和以前完全一样。比 16:9 更宽时，
+  按裁剪块的横向位置分别贴左、居中、贴右；这个规则还没有用 21:9 实战截图校准
 - 游戏的宽高比不一定等于截图的宽高比：DX12 全屏用拉伸分辨率时，游戏按 2560×1600 摆界面，再压扁成显示器的 2560×1440。
   所以分两步：先按游戏的宽高比摆好，再横竖各自拉伸到截图大小。游戏的宽高比用 set_game_aspect() 设（没设 = 和截图一样）
 """
@@ -40,18 +41,27 @@ class Mapping:
         h, w = shape[:2]
         aspect = aspect or _game_aspect or w / h
         bw, bh = base
+        self.base_w = bw
         self.dx = self.dy = 0.0
+        self.extra_w = 0.0
         canvas_w, canvas_h = bw, bh  # 游戏的画面有多大（基准像素）
-        if aspect < bw / bh - SAME_ASPECT:  # 比 16:9 窄：按宽缩放，上下多出来
+        if aspect < bw / bh - SAME_ASPECT:  # 比基准画面窄：按宽缩放，上下多出来
             canvas_h = bw / aspect
             self.dy = anchor_value(anchor) * (canvas_h - bh)
+        elif aspect > bw / bh + SAME_ASPECT:  # 宽屏：按高缩放，左右多出来
+            canvas_w = bh * aspect
+            # 左侧 HUD 随左边，中央结算卡居中，右侧 HUD 随右边。
+            # 用裁剪区域的中心选锚点，所有现有配置都能沿用；实战截图到手后可逐区域校准。
+            self.extra_w = canvas_w - bw
         self.sx, self.sy = w / canvas_w, h / canvas_h  # 基准像素 → 截图像素（横竖各自，压扁过的截图两个不一样）
 
     def box(self, box):
         """基准坐标 [x, y, 宽, 高] → 截图上的像素 (左, 上, 右, 下)。"""
         x, y, w, h = box
-        return (round((x + self.dx) * self.sx), round((y + self.dy) * self.sy),
-                round((x + self.dx + w) * self.sx), round((y + self.dy + h) * self.sy))
+        center = (x + w / 2) / self.base_w
+        dx = self.dx + self.extra_w * (0 if center < 1 / 3 else 1 if center > 2 / 3 else 0.5)
+        return (round((x + dx) * self.sx), round((y + self.dy) * self.sy),
+                round((x + dx + w) * self.sx), round((y + self.dy + h) * self.sy))
 
 
 def cut(img, box, base, anchor=None, aspect=None):

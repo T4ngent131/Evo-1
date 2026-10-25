@@ -27,6 +27,7 @@ from ocr import load_config, load_image
 from player_name import pick_name
 from screens import TEMPLATE_DIR, gray_crop, outline
 from storage import name_key
+import ui_terms
 
 CONFIG_NAME = "hud.json"
 HUD_TEMPLATE_DIR = TEMPLATE_DIR / "hud"
@@ -178,7 +179,7 @@ class Hud:
         """读一小块里的一个整数（格式和范围都对、置信度够高才算），读不到返回 (None, 置信度或 None)。"""
         best = (None, None)
         for text, score in self._texts(piece):
-            m = re.search(pattern, clean_number(text, top["replace"]))
+            m = re.search(pattern, clean_number(text, top["replace"]), re.I)
             if not m:
                 continue
             value = int(m[1])
@@ -196,7 +197,8 @@ class Hud:
         values, scores = {}, {}
         for name, spec in top["fields"].items():  # 剩余小队数、RP（击杀那一行见下面）
             piece = snip.crop(spec["roi"], top["upscale"], pad=top["pad"])
-            pattern = r"^([+-]?\d{1,3})(?:排位.*)?$" if name == "rp_delta" else r"^(\d{1,3})$"
+            pattern = (r"^([+-]?\d{1,3})(?:\s*" + ui_terms.POINT_SUFFIX + r".*)?$"
+                       if name == "rp_delta" else r"^(\d{1,3})$")
             values[name], scores[name] = self._number(piece, pattern, spec["range"], top)
         values["damage"], scores["damage"], icon = self._damage(snip, top)
         icons = self._kp_icons(snip, top["kp_row"])

@@ -107,8 +107,11 @@ def layout_checks():
     squeezed = layout.Mapping((1440, 2560), base, "bottom", aspect=16 / 10).box(box)
     out[f"2560×1440 的截图、游戏是 16:10（DX12 拉伸）：先按 16:10 摆、再压扁（{squeezed}）"] = \
         squeezed == (133, 1344, 160, 1356)
-    out["比 16:9 更宽的（21:9，还没校准）：照旧横竖各自拉伸"] = \
-        layout.Mapping((1440, 3440), base, "bottom").box(box) == old_box(box, 3440, 1440)
+    wide = layout.Mapping((1080, 2520), base, "bottom")
+    out["21:9：左侧、中央、右侧区域分别贴左、居中、贴右"] = (
+        wide.box([100, 100, 20, 10]) == (100, 100, 120, 110)
+        and wide.box([900, 500, 120, 20]) == (1200, 500, 1320, 520)
+        and wide.box([1700, 100, 100, 20]) == (2300, 100, 2400, 120))
     return out
 
 
@@ -125,6 +128,9 @@ def detect_checks():
     out["视频设置文件（UTF-16）：全屏 2560×1600 → 16:10"] = game_aspect.from_video_config()[0] == 1.6
     write_video_config(1, 2560, 1920, encoding="utf-8")
     out["视频设置文件（UTF-8）：全屏 2560×1920 → 4:3"] = game_aspect.name(game_aspect.from_video_config()[0]) == "4:3"
+    write_video_config(1, 2520, 1080, encoding="utf-8")
+    out["视频设置文件：全屏 2520×1080 → 21:9"] = game_aspect.name(game_aspect.from_video_config()[0]) == "21:9"
+    out["常见 3440×1440 也显示为 21:9"] = game_aspect.name(3440 / 1440) == "21:9"
     write_video_config(0, 2560, 1600)
     out["不是全屏（文件里的分辨率不一定在用）：按截图的比例"] = game_aspect.from_video_config()[0] is None
     VIDEO_CONFIG.write_text("乱写的内容", encoding="utf-8")
@@ -172,7 +178,8 @@ def panel_checks():
     out["选 4:3 保存：记进设置，页面上选中 4:3，顶部提示"] = (
         app_settings.get(game_aspect.SETTING_KEY) == "4:3" and '<option value="4:3" selected>' in saved.get_data(as_text=True)
         and "游戏画面比例已改成" in saved.get_data(as_text=True))
-    out["不认识的值（21:9）：拒绝"] = client.post("/settings/game-aspect", data={"token": token, "aspect": "21:9"}).status_code == 400
+    out["21:9 可手动选择"] = client.post("/settings/game-aspect", data={"token": token, "aspect": "21:9"}).status_code == 302
+    out["不认识的值：拒绝"] = client.post("/settings/game-aspect", data={"token": token, "aspect": "32:9"}).status_code == 400
     out["没带口令：拒绝"] = client.post("/settings/game-aspect", data={"aspect": "auto"}).status_code != 302
     app_settings.set_value(game_aspect.SETTING_KEY, "auto")
     VIDEO_CONFIG.unlink()

@@ -32,6 +32,10 @@
 
 ## 里程碑
 
+### 2026-10-25
+
+- 开始分辨率及游戏语言适配：`layout.py` 为超宽屏加入左/中/右横向锚定，`game_aspect.py` 加入 21:9 识别和手动选项；`ui_terms.py` / `config/ui_terms.json` 为部分英文、繁体中文模式、地图、段位与 RP 文字提供别名。`tests/test_layout_wide.py` 与 `tests/test_ui_terms.py` 的无截图检查通过；尚无 21:9、英文、繁体中文游戏截图，画面模板与整局记录未验证，待办仍保留。
+
 ### 2026-10-16
 
 - 环境准备：Python 3.13（项目虚拟环境 `.venv`）、VS Code、Git、Claude Code

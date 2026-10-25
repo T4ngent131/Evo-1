@@ -1,8 +1,8 @@
-"""游戏画面的宽高比（16:9、16:10、4:3）：Evo 按它换算界面在截图上的位置（见 layout.py）。
+"""游戏画面的宽高比（16:9、16:10、4:3、21:9）：Evo 按它换算界面在截图上的位置（见 layout.py）。
 
 截图的尺寸只说明显示器的比例：DX12 全屏用拉伸分辨率（如启动项 -w 2560 -h 1600）时，游戏按 16:10 摆界面，
 再压扁成显示器的 2560×1440，截图看起来还是 16:9。所以要另外知道游戏自己用的分辨率（2026-10-20 用户决定）：
-- 设置页"游戏画面比例"（settings.json 里的 game_aspect）：自动检测（默认）/ 16:9 / 16:10 / 4:3
+- 设置页"游戏画面比例"（settings.json 里的 game_aspect）：自动检测（默认）/ 16:9 / 16:10 / 4:3 / 21:9
 - 自动检测：读 Apex 自己的视频设置文件（存档文件夹里的 Respawn\\Apex\\local\\videoconfig.txt，只读不改，原则 1 的例外）。
   全屏时用里面的分辨率（setting.defaultres × setting.defaultresheight）；不是全屏（无边框窗口、窗口）或读不到文件：
   和截图一样。2026-10-20 实测：DX12 全屏时文件里是 fullscreen 1、nowindowborder 1，分辨率就是启动项写的那个
@@ -25,7 +25,7 @@ import layout
 
 SETTING_KEY = "game_aspect"
 AUTO = "auto"
-ASPECTS = {"16:9": 16 / 9, "16:10": 16 / 10, "4:3": 4 / 3}  # 设置页能选的
+ASPECTS = {"16:9": 16 / 9, "16:10": 16 / 10, "4:3": 4 / 3, "21:9": 21 / 9}  # 设置页能选的
 CHECK_SECONDS = 5  # 记录程序每隔几秒看一眼设置和视频设置文件
 
 
@@ -57,6 +57,8 @@ def name(aspect):
     for label, value in ASPECTS.items():
         if abs(aspect - value) < layout.SAME_ASPECT:
             return label
+    if 2.25 <= aspect <= 2.45:  # 3440×1440 等常见超宽屏不恰好等于 21/9
+        return "21:9"
     r = Fraction(aspect).limit_denominator(20)
     return f"{r.numerator}:{r.denominator}" if r.denominator <= 20 else f"{aspect:.2f}:1"
 

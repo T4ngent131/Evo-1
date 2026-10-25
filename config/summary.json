@@ -20,6 +20,7 @@
     "roi": [780, 158, 360, 70],
     "anchor": "top",
     "champion": "捍卫者",
+    "champion_aliases": ["捍衛者", "CHAMPION"],
     "_说明": "总结页顶部的大字：被淘汰是'全军覆没'，拿冠军是'捍卫者'（2026-10-18 样本 captures/samples/捍卫者结算界面.png：冠军也有总结页）。存总结页时读一次，是'捍卫者'就记第 1 名（来源'冠军横幅'，见 post_match.py）"
   },
   "teammates": {

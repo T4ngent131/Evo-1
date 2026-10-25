@@ -15,13 +15,14 @@ import re
 from pathlib import Path
 
 import ranks
+import ui_terms
 from ocr import SMALL_CROP_PARAMS, create_engine, load_config, load_image, read_lines
 
 CONFIG_NAME = "xp.json"
 
-POINTS = re.compile(r"([+-]?\d+)\s*排位点")  # "130 排位点数"、"-65排位点数"
-COUNT_POINTS = re.compile(r"(\d+)(?:\s+(\d+))?\s*排位点")  # "2 40排位点数"；连在一起时是 "00排位点数"
-PLACEMENT_POINTS = re.compile(r"第\s*(\d+)(?:\s+(\d+))?\s*排位点")  # "第13 5排位点数"
+POINTS = re.compile(r"([+-]?\d+)\s*" + ui_terms.POINT_SUFFIX, re.I)
+COUNT_POINTS = re.compile(r"(\d+)(?:\s+(\d+))?\s*" + ui_terms.POINT_SUFFIX, re.I)
+PLACEMENT_POINTS = re.compile(r"第\s*(\d+)(?:\s+(\d+))?\s*" + ui_terms.POINT_SUFFIX, re.I)
 ROMAN = {"Ⅰ": "I", "Ⅱ": "II", "Ⅲ": "III", "Ⅳ": "IV", "1": "I", "l": "I", "|": "I"}
 
 
@@ -53,12 +54,11 @@ def current_rank(next_text):
     "下一段位：Apex 猎杀者" → (大师, None)（大师不分段）。段位名和顺序见 config/ranks.json。读不懂返回 None。"""
     name = next_text.split(":")[-1].replace(" ", "")
     tiers, divisions = ranks.TIERS, ranks.DIVISIONS
-    keys = {t: t.replace(" ", "").lower() for t in tiers}  # 比较时不管空格和大小写（"Apex猎杀者"）
-    tier = next((t for t in sorted(tiers, key=lambda t: len(keys[t]), reverse=True)
-                 if name.lower().startswith(keys[t])), None)
-    if tier is None:
+    found = ui_terms.tier_prefix(name)
+    if found is None or found[0] not in tiers:
         return None
-    roman = "".join(ROMAN.get(c, c) for c in name[len(keys[tier]):])
+    tier, remainder = found
+    roman = "".join(ROMAN.get(c, c) for c in remainder.upper())
     t = tiers.index(tier)
 
     def top_of_previous():  # 当前是上一个段位的最高段（不分段的段位没有段）

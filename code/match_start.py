@@ -15,6 +15,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from ocr import SMALL_CROP_PARAMS, create_engine, load_config, load_image, read_lines
+import ui_terms
 
 CONFIG_NAME = "match_start.json"
 
@@ -30,6 +31,9 @@ def closest_map(text, cfg):
     text = text.replace(" ", "")
     if not text:
         return None
+    alias = ui_terms.alias_group("maps", text)
+    if alias in cfg["maps"]:
+        return alias
     best = max(cfg["maps"], key=lambda m: SequenceMatcher(None, text, m).ratio())
     return best if SequenceMatcher(None, text, best).ratio() >= cfg["map_min_similarity"] else None
 
@@ -40,7 +44,7 @@ def read_match_start(engine, img, cfg):
     raw_map = read_text(engine, img, cfg["fields"]["map"], cfg)
     mode_name = re.split(r"\s*[-－—–]\s*", raw_mode.replace(" ", ""))[0]
     return {
-        "mode": cfg["modes"].get(mode_name),
+        "mode": cfg["modes"].get(mode_name) or ui_terms.alias_group("modes", mode_name),
         "map": closest_map(raw_map, cfg),
         "raw_mode": mode_name,
         "raw_map": raw_map,
