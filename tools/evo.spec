@@ -17,6 +17,8 @@ datas = [
 ]
 datas += collect_data_files("rapidocr")      # 识别模型（.onnx）和识别引擎的配置（.yaml）
 datas += copy_metadata("pystray")            # pystray 的许可证信息（LGPL 要求）
+datas += copy_metadata("av")                  # PyAV / FFmpeg 的元数据和许可证
+datas += copy_metadata("soundcard")           # WASAPI 录音库的许可证
 
 a = Analysis(
     [os.path.join(CODE, "evo_app.py")],

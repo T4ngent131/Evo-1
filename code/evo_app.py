@@ -294,7 +294,7 @@ class Recorder:
         self._quit.set()
         self._wake.set()
         if self._loop_thread is not None:
-            self._loop_thread.join(timeout=60)
+            self._loop_thread.join(timeout=300)  # 高光视频可能需要逐段截取
 
     def _recording(self):
         return self._proc is not None and self._proc.is_alive()
@@ -346,9 +346,9 @@ class Recorder:
     def _stop_collect(self):
         if self._recording():
             self._stop.set()
-            self._proc.join(timeout=60)  # 等它把没存完的局存好再退出
+            self._proc.join(timeout=300)  # 等它存好战绩并截完高光片段
             if self._proc.is_alive():
-                self.log("记录子程序 60 秒内没有停下，强制结束")
+                self.log("记录子程序 300 秒内没有停下，强制结束")
                 self._proc.terminate()
 
     def _set_state(self, state):

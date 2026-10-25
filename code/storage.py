@@ -18,7 +18,7 @@ from pathlib import Path
 from paths import DB_PATH
 
 APP_VERSION = "0.3.8"
-SCHEMA_VERSION = 7  # 表结构变了就加 1，并在 MIGRATIONS 里写上怎么从旧版本升级
+SCHEMA_VERSION = 8  # 表结构变了就加 1，并在 MIGRATIONS 里写上怎么从旧版本升级
 
 # 列名和类型，顺序也是导出 CSV 时的列顺序
 COLUMNS = {
@@ -105,6 +105,17 @@ LOBBY_TABLE = """CREATE TABLE IF NOT EXISTS lobby_readings (
   score INTEGER  -- 换算成的总分（见 ranks.score），如 14868
 )"""
 
+HIGHLIGHT_TABLE = """CREATE TABLE IF NOT EXISTS highlights (
+  highlight_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_id INTEGER NOT NULL,
+  occurred_at TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  amount INTEGER,
+  source TEXT NOT NULL,
+  clip_path TEXT,
+  UNIQUE (match_id, occurred_at, kind)
+)"""
+
 # 旧数据库怎么升级：版本号 → 升到这个版本要做的事（SQL，或者 ("加列", 表, 列, 类型)）。只加列、加表，已有的数据不动
 # （Stata 类比：给已有的 .dta 文件 generate 一个空的新变量）。加列时已经有这一列就跳过
 MIGRATIONS = {
@@ -116,6 +127,7 @@ MIGRATIONS = {
         ("加列", "teammates", "legend", "TEXT"),  # 队友的传奇
         LOBBY_TABLE],  # 大厅读数
     7: [("加列", "matches", "edited", "TEXT")],  # 2026-10-22 0.3.7：用户改过哪几项（匿名统计里的"识别情况"用）
+    8: [HIGHLIGHT_TABLE],
 }
 
 
@@ -145,6 +157,7 @@ def _upgrade(conn):
             conn.execute(MATE_TABLE)
             conn.execute(READING_TABLE)
             conn.execute(LOBBY_TABLE)
+            conn.execute(HIGHLIGHT_TABLE)
         else:
             for v in range(version + 1, SCHEMA_VERSION + 1):
                 for step in MIGRATIONS[v]:
@@ -259,6 +272,7 @@ def delete_match(conn, match_id):
     conn.execute("DELETE FROM matches WHERE match_id = ?", (match_id,))
     conn.execute("DELETE FROM teammates WHERE match_id = ?", (match_id,))
     conn.execute("DELETE FROM readings WHERE match_id = ?", (match_id,))
+    conn.execute("DELETE FROM highlights WHERE match_id = ?", (match_id,))
     conn.commit()
 
 
@@ -326,6 +340,29 @@ def readings_of(conn, match_id, field=None):
     return conn.execute(sql + " ORDER BY field, source", params).fetchall()
 
 
+def save_highlights(conn, match_id, events):
+    """保存确认过的本局事件；重复收尾时不产生重复标记。"""
+    conn.executemany(
+        "INSERT OR IGNORE INTO highlights (match_id, occurred_at, kind, amount, source) VALUES (?, ?, ?, ?, ?)",
+        [(match_id, e["occurred_at"], e["kind"], e.get("amount"), e["source"]) for e in events],
+    )
+    conn.commit()
+
+
+def highlights_of(conn, match_id):
+    return conn.execute("SELECT * FROM highlights WHERE match_id = ? ORDER BY occurred_at, highlight_id",
+                        (match_id,)).fetchall()
+
+
+def get_highlight(conn, highlight_id):
+    return conn.execute("SELECT * FROM highlights WHERE highlight_id = ?", (highlight_id,)).fetchone()
+
+
+def set_highlight_clip(conn, highlight_id, path):
+    conn.execute("UPDATE highlights SET clip_path = ? WHERE highlight_id = ?", (path, highlight_id))
+    conn.commit()
+
+
 def backup_db(conn, path):
     """把整个数据库备份到 path（用 SQLite 自带的备份功能，数据库正在使用时也能安全备份）。"""
     target = sqlite3.connect(path)
@@ -340,6 +377,7 @@ def delete_all_matches(conn):
     n = conn.execute("DELETE FROM matches").rowcount
     conn.execute("DELETE FROM teammates")
     conn.execute("DELETE FROM readings")
+    conn.execute("DELETE FROM highlights")
     conn.execute("DELETE FROM lobby_readings")  # 段位卡片、走势图也要跟着清空
     conn.commit()
     return n

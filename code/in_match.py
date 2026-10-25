@@ -17,6 +17,7 @@
 from collections import deque
 
 from hud import TOP_FIELDS, TOP_LABELS
+from highlights import HighlightSampler
 
 END_SCREENS = ("eliminated", "champion", "summary", "xp", "squad_out")  # 这一局打完了（squad_out：右下角"返回大厅"）
 ZERO_IF_HIDDEN = ("kills", "assists", "participation", "damage")  # 右上角没显示 = 0
@@ -56,6 +57,7 @@ class InMatchWatcher:
         self.mate_names = [[], []]  # 两名队友的名字那一条（最多 3 块）
         self.own_names = []  # 自己的名字那一条
         self.tops = deque(maxlen=self.keep)  # 右上角
+        self.highlight_sampler = HighlightSampler(self.hud)
         self.last_frame = None
         self.done = False  # 这一局已经交给 PostMatch 了
         self.done_at = None
@@ -114,6 +116,7 @@ class InMatchWatcher:
         if self.post.player_name is None and len(self.own_names) < self.max_names:
             self.own_names.append(self.hud.own_name_snip(frame, self.name_place["roi"], self.name_place.get("anchor")))
         snip = self.hud.top_snip(frame)
+        self.highlight_sampler.observe(snip, now)
         if self.hud.changed(snip, self.tops[-1] if self.tops else None):
             self.tops.append(snip)
             if self.save is not None and self.keep_all():
@@ -200,6 +203,9 @@ class InMatchWatcher:
                     self.post.on_player_name(name, now, "对局中")
                     break
         values = self._read_top()
+        events = self.highlight_sampler.finish(self.tops[-1] if self.tops else None, now)
+        if self.highlight_sampler.overflow:
+            self.log("           高光采样达到上限，较晚的击杀可能没有事件标记")
         mates = self._read_mates()
         own_dead = self.dead_at is not None
         last_one = own_dead and self._was_last()
@@ -215,6 +221,7 @@ class InMatchWatcher:
         self.post.on_hud_final({
             "started": self.started, "ended": now, "end": end, "saw_start": self.saw_start,
             "own_dead": own_dead and not last_one, "values": values, "mates": mates,
+            "highlights": events,
             "legend": self.hud.legends.name(self.legend) if self.legend else None,
         })
         if self.last_frame is not None:

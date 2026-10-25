@@ -72,6 +72,27 @@ class Snip:
         return cv2.resize(g, (max(1, g.shape[1] // 4), max(1, g.shape[0] // 4)), interpolation=cv2.INTER_AREA)
 
 
+class PackedSnip:
+    """对局中只保存压缩后的右上角；结束后恢复 Snip，再运行 OCR。"""
+
+    def __init__(self, snip):
+        self.mapping, self.box, self.base = snip.map, snip.box, snip.base
+        self.x0, self.y0, self.sx = snip.x0, snip.y0, snip.sx
+        ok, encoded = cv2.imencode(".jpg", snip.img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        if not ok:
+            raise ValueError("右上角截图压缩失败")
+        self.data = encoded.tobytes()
+
+    def unpack(self):
+        snip = Snip.__new__(Snip)
+        snip.map, snip.box, snip.base = self.mapping, self.box, self.base
+        snip.x0, snip.y0, snip.sx = self.x0, self.y0, self.sx
+        snip.img = cv2.imdecode(np.frombuffer(self.data, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if snip.img is None:
+            raise ValueError("右上角截图解压失败")
+        return snip
+
+
 def load_hud_template(name):
     path = HUD_TEMPLATE_DIR / f"{name}.png"
     if not path.is_file():
@@ -211,6 +232,18 @@ class Hud:
         if icon:
             shown.add("damage")
         return values, scores, shown
+
+    def read_kill_count(self, snip):
+        """只读击杀计数，用于赛后给高光定位；交火时不调用。"""
+        top = self.cfg["top_right"]
+        icons = self._kp_icons(snip, top["kp_row"])
+        if "kills" in icons:
+            value, _ = self._kp_number(snip, top, icons, "kills")
+            return value
+        spec = top["fields"]["squads_left"]
+        piece = snip.crop(spec["roi"], top["upscale"], pad=top["pad"])
+        squads, _ = self._number(piece, r"^(\d{1,3})$", spec["range"], top)
+        return 0 if squads is not None else None
 
     def _kp_icons(self, snip, row):
         """击杀 / 助攻 / 老板分那一行每个图标的左右边（基准坐标），{项: (左, 右)}，没找到的不在里面。

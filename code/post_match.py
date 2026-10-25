@@ -450,11 +450,15 @@ class PostMatch:
     def _save_champion(self, match_id):
         storage.save_readings(self.conn, match_id, SOURCE_CHAMPION, {"placement": 1},
                               f"{self.champion:%Y-%m-%d %H:%M:%S}")
+        storage.save_highlights(self.conn, match_id, [{"occurred_at": f"{self.champion:%Y-%m-%d %H:%M:%S}",
+                                                       "kind": "champion", "amount": None, "source": "冠军横幅"}])
 
     def _save_hud(self, match_id):
         """对局中最后的读数记进 readings 表。自己先成盒的局（队友后被淘汰），RP 和剩余小队数不是最终的：
         RP 另记成 rp_at_death（只留着以后核对，不采用），剩余小队数不记。end_screen：这一局怎么结束的（settle 写说明用）。"""
         h = self.hud
+        if h.get("highlights"):
+            storage.save_highlights(self.conn, match_id, h["highlights"])
         values = {k: h["values"].get(k) for k in HUD_FIELDS}
         if h["own_dead"]:
             values["rp_at_death"] = h["values"].get("rp_delta")

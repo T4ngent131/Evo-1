@@ -82,6 +82,26 @@
       {% endfor %}
     </section>
 
+    <section class="card settings-card" aria-labelledby="h-highlights">
+      <h2 id="h-highlights">高光时刻</h2>
+      <div class="setting">
+        <div class="setting-text">
+          <div class="setting-name" id="highlight-video-name">自动保存高光视频</div>
+          <div class="setting-desc">击杀和冠军事件保存时间标记；开启后同时录制桌面与系统输出声音，停止记录游戏时生成事件前 15 秒、后 10 秒的 MP4。录制会增加 CPU、磁盘占用，临时录像在片段生成后删除。</div>
+        </div>
+        <form method="post" action="{{ url_for('highlight_video_setting') }}">
+          <input type="hidden" name="token" value="{{ token }}">
+          <input type="hidden" name="on" value="{{ '0' if highlight_video_on else '1' }}">
+          <button type="submit" class="switch" role="switch" aria-checked="{{ 'true' if highlight_video_on else 'false' }}"
+                  aria-labelledby="highlight-video-name">
+            <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+            <span class="switch-state" aria-hidden="true">{{ '已开启' if highlight_video_on else '已关闭' }}</span>
+          </button>
+        </form>
+      </div>
+      <p class="setting-desc">击倒提示还需要游戏原始画面校准；目前不会自动标记击倒。</p>
+    </section>
+
     <section class="card settings-card" aria-labelledby="h-rec">
       <h2 id="h-rec">识别</h2>
       <div class="info-grid">

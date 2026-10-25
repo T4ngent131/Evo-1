@@ -45,9 +45,11 @@ import dxcam
 import screenshots
 import sounds
 import storage
+import app_settings
 from eliminated import read_eliminated
 from game_aspect import AspectWatcher
 from hud import Hud
+from highlight_video import SessionRecorder, SETTING_KEY as HIGHLIGHT_VIDEO_KEY
 from in_match import InMatchWatcher
 from lobby import LobbyReader, LobbyWatcher
 from match_start import read_match_start
@@ -340,6 +342,15 @@ def collect(db_path=storage.DB_PATH, interval=1.0, fast=0.3, summary_timeout=10.
     run_dir = CAPTURES_DIR / "live" / datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
     conn = storage.connect(db_path)
+    recorder = None
+    if app_settings.get(HIGHLIGHT_VIDEO_KEY, True) is True:
+        try:
+            last_highlight = conn.execute("SELECT COALESCE(MAX(highlight_id), 0) FROM highlights").fetchone()[0]
+            recorder = SessionRecorder(log, after_id=last_highlight)
+            recorder.start()
+        except Exception as exc:
+            log(f"⚠ 高光录像未启动：{exc}")
+            recorder = None
 
     def keep_now():
         return screenshots.keep_all() if keep_all is None else keep_all
@@ -454,6 +465,8 @@ def collect(db_path=storage.DB_PATH, interval=1.0, fast=0.3, summary_timeout=10.
         summary.finish()
         other.leave()
         post.finish()
+        if recorder is not None:
+            recorder.finish(db_path)
         aspect.reset()
         camera.release()
         conn.close()

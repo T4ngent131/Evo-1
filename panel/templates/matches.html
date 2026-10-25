@@ -132,6 +132,18 @@
             {% endif %}
             {% if r.review_note %}<div class="note">{{ r.review_note }}</div>{% endif %}
             <div class="note">玩家名 {{ r.player_name }} · 老板分 {{ r.participation }} · 小队总击杀 {{ r.squad_kills }} · 急救 {{ r.revives }} · 重生 {{ r.respawns }}{% if r.rp_source %} · RP 来自{{ r.rp_source }}{% endif %}</div>
+            {% if r.highlights %}
+            <div class="highlight-list" aria-label="本局高光时刻">
+              <div class="evidence-title">本局高光</div>
+              {% for event in r.highlights %}
+              <div class="highlight-item">
+                <span class="num">{{ event.occurred_at[-8:] }}</span>
+                <span>{{ '冠军' if event.kind == 'champion' else ('击杀 +' ~ event.amount if event.kind == 'kill' else event.kind) }}</span>
+                {% if event.clip_path %}<a class="text-link" href="{{ url_for('highlight_clip', highlight_id=event.highlight_id) }}" target="_blank">播放片段</a>{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
           </div>
 
           <div class="edit">

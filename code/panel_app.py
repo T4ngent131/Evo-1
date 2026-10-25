@@ -824,6 +824,7 @@ def matches():
     for r in rows:
         if r["id"] == open_id:
             r["mates"] = [mate_view(m) for m in storage.teammates_of(db(), open_id)]
+            r["highlights"] = storage.highlights_of(db(), open_id)
             r["show_detail"] = r["needs_review"] or request.args.get("detail") == "1"
             if not r["needs_review"]:
                 share = {"player": None if r["player_name"] == "—" else r["player_name"],
@@ -930,8 +931,11 @@ def update(match_id):
 
 @app.post("/matches/<int:match_id>/delete")
 def delete(match_id):
+    clips = [row["clip_path"] for row in storage.highlights_of(db(), match_id) if row["clip_path"]]
     deleted = screenshots.discard(db(), storage.get_match(db(), match_id))
     storage.delete_match(db(), match_id)
+    for clip in clips:
+        _remove_highlight_clip(clip)
     flash(f"已删除第 {match_id} 号对局" + ("和它的截图" if deleted else ""), "ok")
     return back_to_list()
 
@@ -946,6 +950,25 @@ def evidence(match_id):
     if not path.is_file():
         abort(404)
     return send_file(path)
+
+
+@app.route("/highlights/<int:highlight_id>.mp4")
+def highlight_clip(highlight_id):
+    """只播放登记在高光表、且确实位于本地高光文件夹的视频。"""
+    row = storage.get_highlight(db(), highlight_id)
+    if row is None or not row["clip_path"]:
+        abort(404)
+    path = data_absolute(row["clip_path"]).resolve()
+    folder = (paths.DATA_DIR / "highlights").resolve()
+    if folder not in path.parents or path.suffix.lower() != ".mp4" or not path.is_file():
+        abort(404)
+    return send_file(path, mimetype="video/mp4", conditional=True)
+
+
+def _remove_highlight_clip(saved_path):
+    path = data_absolute(saved_path).resolve()
+    if path.parent == (paths.DATA_DIR / "highlights").resolve() and path.suffix.lower() == ".mp4":
+        path.unlink(missing_ok=True)
 
 
 # ---------- 分享战绩：卡片图片（SVG）。网址里 name=0 时不写游戏名 ----------
@@ -1027,6 +1050,7 @@ def settings():
         autostart={**autostart.status(), "blocked": autostart.unavailable(),
                    "failed": session.pop("autostart_failed", None)},
         sounds_on=sounds.enabled(),
+        highlight_video_on=app_settings.get("highlight_video", True) is True,
         sound_list=[{"key": key, "label": label, "when": SOUND_WHEN[key]} for key, label in sounds.SOUNDS.items()],
         data_dir=db_path().parent,
         db_file=db_path().name,
@@ -1157,6 +1181,15 @@ def sounds_setting():
     return redirect(url_for("settings"))
 
 
+@app.post("/settings/highlight-video")
+def highlight_video_setting():
+    on = request.form.get("on") == "1"
+    app_settings.set_value("highlight_video", on)
+    flash("已开启高光视频：下次开始记录游戏时录制画面和系统输出声音。" if on
+          else "已关闭高光视频：下次开始记录游戏时生效。事件时间标记仍会保存。", "ok")
+    return redirect(url_for("settings"))
+
+
 @app.post("/settings/sound-preview")
 def sound_preview():
     """设置页的"试听"：不管开关，响一声。页面用脚本提交（不刷新页面），回答放出来没有；没有脚本时回到设置页。"""
@@ -1221,7 +1254,10 @@ def clear_data():
         return redirect(url_for("settings"))
     backup = db_path().with_name(f"{db_path().name}.bak-clear-{datetime.now():%Y%m%d-%H%M%S}")
     storage.backup_db(db(), backup)
+    clips = [row[0] for row in db().execute("SELECT clip_path FROM highlights WHERE clip_path IS NOT NULL")]
     storage.delete_all_matches(db())
+    for clip in clips:
+        _remove_highlight_clip(clip)
     flash(f"已清空 {total} 局战绩。清空前的数据备份在 {backup}", "ok")
     return redirect(url_for("settings"))
 
